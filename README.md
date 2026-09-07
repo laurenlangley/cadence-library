@@ -1,2 +1,2 @@
-# cadence-library-
+# cadence-library
 Cadence Library Catalog 
