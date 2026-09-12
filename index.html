@@ -576,6 +576,9 @@ function changeSummary(){
     return {title:b?b._title:id, what:o.isNew?"added":(b?semanticLabels[b._semantic]:"edited")}
   })
 }
+async function ghReason(r){
+  try{const j=await r.json();return j&&j.message?`GitHub said: ${j.message}`:""}catch(e){return ""}
+}
 async function openSync(){
   sheetOpen="sync";
   const changes=changeSummary();
@@ -602,8 +605,8 @@ async function doSync(){
   let sha=null, remoteRows=null, remoteCols=null;
   try{
     const r=await fetch(`${api}?ref=${REPO.branch}`,{headers:H});
-    if(r.status===401||r.status===403)return fail("GitHub rejected the token. Check it has Contents: Read and write on this repo.");
-    if(!r.ok)return fail(`Could not read the file (HTTP ${r.status}).`);
+    if(r.status===404)return fail(`No ${REPO.file} on ${REPO.owner}/${REPO.repo}@${REPO.branch}. Check Owner and Repo in Settings.`);
+    if(!r.ok)return fail(`Could not read the file (HTTP ${r.status}). ${await ghReason(r)}`);
     const j=await r.json();sha=j.sha;
     const text=new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g,"")),c=>c.charCodeAt(0)));
     const p=parseCSV(text);remoteCols=p.columns;remoteRows=p.rows;
@@ -621,7 +624,12 @@ async function doSync(){
   try{
     const r=await fetch(api,{method:"PUT",headers:Object.assign({"Content-Type":"application/json"},H),body:JSON.stringify(body)});
     if(r.status===409)return fail("The file changed on GitHub while you were editing. Reload and try again.");
-    if(!r.ok)return fail(`Commit rejected (HTTP ${r.status}).`);
+    if(r.status===403||r.status===401){
+      const scopes=r.headers.get("x-accepted-github-permissions")||"";
+      return fail(`Write refused (HTTP ${r.status}). ${await ghReason(r)} This token can read the repo but not write to it. In the token settings check that Repository access includes ${REPO.owner}/${REPO.repo}, and that Permissions > Contents is "Read and write", not "Read-only".${scopes?" GitHub wants: "+scopes:""}`);
+    }
+    if(r.status===422)return fail(`GitHub rejected the content (HTTP 422). ${await ghReason(r)} Often a protected branch on ${REPO.branch}.`);
+    if(!r.ok)return fail(`Commit rejected (HTTP ${r.status}). ${await ghReason(r)}`);
   }catch(e){return fail("Network error committing: "+e.message)}
   OVERLAY={};try{await idbClear("overlay")}catch(e){}
   rebuild();render();updateSyncBar();
