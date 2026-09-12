@@ -23,11 +23,53 @@ h1{margin:0;font-family:Georgia,serif;font-weight:400;font-size:clamp(34px,7vw,5
 .author{font-size:11px;color:var(--muted);margin-top:3px}.micro{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
 .micro span{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 5px}
 .empty{display:none;text-align:center;color:var(--muted);padding:70px 0}@media(min-width:800px){.controls{grid-template-columns:minmax(260px,1fr) auto auto}.grid{grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:20px}}
+
+/* --- book detail --- */
+.scrim{position:fixed;inset:0;background:rgba(28,24,18,.42);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .22s;z-index:40}
+.scrim.open{opacity:1;pointer-events:auto}
+.detail{position:fixed;inset:auto 0 0 0;max-height:92vh;background:var(--bg);border-radius:26px 26px 0 0;box-shadow:0 -14px 50px rgba(30,25,18,.28);z-index:50;transform:translateY(101%);transition:transform .3s cubic-bezier(.32,.72,0,1);display:flex;flex-direction:column;overscroll-behavior:contain}
+.detail.open{transform:translateY(0)}
+@media(min-width:760px){.detail{inset:0;max-height:none;border-radius:0;max-width:720px;margin:0 auto;box-shadow:0 0 70px rgba(30,25,18,.3)}}
+.detail-bar{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:14px 20px 10px;border-bottom:1px solid var(--line)}
+.detail-bar .grab{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:38px;height:4px;border-radius:2px;background:var(--line)}
+.backbtn{appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:13px;padding:7px 14px;border-radius:999px;cursor:pointer}
+.backbtn:active{background:rgba(0,0,0,.05)}
+.detail-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:22px 20px 44px}
+.d-head{display:grid;grid-template-columns:104px 1fr;gap:18px;align-items:start}
+.d-cover{position:relative;aspect-ratio:2/3;border-radius:11px;overflow:hidden;box-shadow:0 8px 22px rgba(30,25,18,.16);background:#ddd}
+.d-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.d-title{font-family:Georgia,serif;font-size:27px;line-height:1.08;letter-spacing:-.025em;margin:0 0 5px}
+.d-author{font-size:13px;opacity:.72;margin:0 0 12px}
+.d-state{display:inline-flex;align-items:center;gap:7px;font-size:11px;text-transform:uppercase;letter-spacing:.09em;border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+.d-state i{width:8px;height:8px;border-radius:50%}
+.facts{margin:26px 0 0;border-top:1px solid var(--line)}
+.fact{display:grid;grid-template-columns:128px 1fr;gap:14px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.fact dt{opacity:.55;text-transform:uppercase;letter-spacing:.07em;font-size:10.5px;padding-top:2px}
+.fact dd{margin:0;word-break:break-word}
+.fact dd a{color:inherit}
+.notes{margin-top:30px}
+.notes h2{font-family:Georgia,serif;font-size:15px;letter-spacing:.02em;margin:0 0 4px;font-weight:400}
+.notes .rule{height:1px;background:var(--ink);opacity:.85;margin-bottom:16px}
+.note-md{font-size:14.5px;line-height:1.62}
+.note-md h3{font-family:Georgia,serif;font-size:13px;text-transform:uppercase;letter-spacing:.11em;opacity:.6;margin:24px 0 8px;font-weight:400}
+.note-md p{margin:0 0 13px}
+.note-md ul{margin:0 0 13px;padding-left:17px}
+.note-md li{margin:0 0 8px}
+.note-md em{font-style:italic}
+.note-md strong{font-weight:600}
+.nonote{font-size:13.5px;opacity:.55;line-height:1.6}
+.book{cursor:pointer}
 </style></head><body>
 <header><div class="shell"><div class="top"><div><h1>Cadence</h1><div class="sub">Books & audiobooks</div></div><div class="count" id="count"></div></div>
-<div class="controls"><input class="search" id="search" type="search" placeholder="Search title or author…"><select class="select" id="sort"><option value="title">A–Z</option><option value="semantic">Read state</option><option value="status">Detailed status</option><option value="genre">Genre</option><option value="color">Cover color</option></select><select class="select" id="direction"><option value="asc">Ascending</option><option value="desc">Descending</option></select></div>
+<div class="controls"><input class="search" id="search" type="search" placeholder="Search title or author…"><select class="select" id="sort"><option value="title">A–Z</option><option value="semantic">Read state</option><option value="genre">Genre</option><option value="color">Cover color</option></select><select class="select" id="direction"><option value="asc">Ascending</option><option value="desc">Descending</option></select></div>
 <div class="filters" id="filters"></div><div class="syncbar"><span id="syncStatus">Covers load progressively and are cached on this device.</span><button id="refreshCovers">Refresh covers</button></div></div></header>
-<main class="shell"><section class="grid" id="grid"></section><div class="empty" id="empty">No books match this view.</div></main><script>
+<main class="shell"><section class="grid" id="grid"></section><div class="empty" id="empty">No books match this view.</div></main>
+<div class="scrim" id="scrim"></div>
+<aside class="detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="dTitle" hidden>
+  <div class="detail-bar"><span class="grab"></span><button class="backbtn" id="backbtn">&#8592; Library</button></div>
+  <div class="detail-body" id="detailBody"></div>
+</aside>
+<script>
 const BOOKS = /*__BOOKS__*/[]/*__END__*/;
 const state={filter:"all",sort:"title",direction:"asc",query:""};
 const semanticColors={read:"#6B7D68",reading:"#C58A4A",want:"#657C93"}, semanticLabels={read:"Read",reading:"Reading",want:"Want to read"};
@@ -128,9 +170,7 @@ const io=new IntersectionObserver(es=>{
 
 function renderFilters(){
   const groups=[["all","All"],["read","Read"],["reading","Reading"],["want","Want to read"]];
-  filters.innerHTML=groups.map(([k,l])=>`<button class="chip ${k==="all"?"active":""}" data-k="${k}">${l}</button>`).join("")
-    +`<span style="width:1px;background:var(--line);margin:2px"></span>`
-    +[...new Set(BOOKS.map(b=>b._status))].map(s=>`<button class="chip" data-k="status:${esc(s)}">${statusLabel(s)}</button>`).join("");
+  filters.innerHTML=groups.map(([k,l])=>`<button class="chip ${k==="all"?"active":""}" data-k="${k}">${l}</button>`).join("");
   filters.querySelectorAll(".chip").forEach(btn=>btn.onclick=()=>{state.filter=btn.dataset.k;filters.querySelectorAll(".chip").forEach(x=>x.classList.remove("active"));btn.classList.add("active");render()})
 }
 function cmp(a,b){
@@ -176,7 +216,75 @@ document.querySelector("#refreshCovers").onclick=async()=>{
   fetched=0;attempted=0;queue.length=0;
   syncStatus.textContent="Cover cache cleared. Reloading…";render()
 };
+
+/* --- book detail view --- */
+const scrim=document.getElementById("scrim"),detail=document.getElementById("detail"),detailBody=document.getElementById("detailBody");
+let lastScroll=0,openBook=null;
+
+function mdToHtml(src){
+  const esc2=t=>t.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  const inline=t=>esc2(t)
+    .replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+)\*/g,"$1<em>$2</em>")
+    .replace(/\bhttps?:\/\/[^\s<)]+/g,u=>`<a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\//,"").slice(0,44)}</a>`);
+  const out=[];let list=null;
+  for(const raw of src.split("\n")){
+    const line=raw.trim();
+    if(!line){if(list){out.push(`<ul>${list.join("")}</ul>`);list=null}continue}
+    const h=line.match(/^(#{1,6})\s+(.*)$/);
+    if(h){if(list){out.push(`<ul>${list.join("")}</ul>`);list=null}out.push(`<h3>${inline(h[2])}</h3>`);continue}
+    const li=line.match(/^[-*]\s+(.*)$/);
+    if(li){(list=list||[]).push(`<li>${inline(li[1])}</li>`);continue}
+    if(list){out.push(`<ul>${list.join("")}</ul>`);list=null}
+    out.push(`<p>${inline(line)}</p>`);
+  }
+  if(list)out.push(`<ul>${list.join("")}</ul>`);
+  return out.join("")
+}
+
+const FACT_LABELS={format:"Format",status:"Status",first_seen:"First seen",last_seen:"Last seen",events:"Events",sources:"Sources",pct_complete:"Progress",isbn:"ISBN",narrator:"Narrator",translator:"Translator",series:"Series",published:"Published",publisher:"Publisher",pages:"Pages",owned:"Owned",provenance:"Provenance",date_started:"Started",date_finished:"Finished",duration:"Duration",language:"Language",reader:"Reader",link:"Link",libby:"Libby",subtitle:"Subtitle",english_publication:"English edition",original_publication:"Original edition",audio_publisher:"Audio publisher",borrowed:"Borrowed",purchased:"Purchased"};
+const FACT_ORDER=["subtitle","series","format","status","published","english_publication","original_publication","publisher","audio_publisher","narrator","translator","language","reader","pages","isbn","owned","provenance","date_started","date_finished","duration","first_seen","last_seen","events","pct_complete","borrowed","purchased","sources","link","libby"];
+
+function openDetail(b,push){
+  openBook=b;
+  const c=semanticColors[b._semantic]||"#888";
+  const cover=b._cover?`<img src="${esc(b._cover)}" alt="">`:`<div class="fallback" style="background:linear-gradient(150deg,rgba(255,255,255,.22),rgba(0,0,0,.16) 90%),${b._ink}"><div class="fallback-title" style="font-size:13px">${esc(b._title)}</div><div class="fallback-author">${esc(b._author)}</div></div>`;
+  const merged=Object.assign({},b._meta||{},{format:b.format,status:b._status,first_seen:b.first_seen,last_seen:b.last_seen,events:b.events,sources:b.sources,pct_complete:b.pct_complete});
+  const facts=FACT_ORDER.filter(k=>merged[k]!==undefined&&String(merged[k]).trim()!==""&&String(merged[k]).trim()!=="0")
+    .map(k=>`<div class="fact"><dt>${FACT_LABELS[k]||k}</dt><dd>${/^https?:\/\//.test(String(merged[k]))?`<a href="${esc(merged[k])}" target="_blank" rel="noopener">${esc(String(merged[k]).replace(/^https?:\/\//,"").slice(0,52))}</a>`:esc(merged[k])}</dd></div>`).join("");
+  const notes=b._note
+    ? `<div class="note-md">${mdToHtml(b._note)}</div>`
+    : `<p class="nonote">No note file for this book yet. Notes live in <code>notes/</code> in the repo and are keyed by the <code>note_file</code> column.</p>`;
+  detailBody.innerHTML=`<div class="d-head"><div class="d-cover">${cover}</div><div><h2 class="d-title" id="dTitle">${esc(b._title)}</h2><p class="d-author">${esc(b._author)||"Author unknown"}</p><span class="d-state"><i style="background:${c}"></i>${semanticLabels[b._semantic]}</span></div></div><dl class="facts">${facts}</dl><div class="notes"><h2>Notes</h2><div class="rule"></div>${notes}</div>`;
+  detail.hidden=false;
+  requestAnimationFrame(()=>{scrim.classList.add("open");detail.classList.add("open")});
+  detailBody.scrollTop=0;
+  lastScroll=window.scrollY;
+  document.body.style.overflow="hidden";
+  if(push)history.pushState({book:b._id},"",`#/book/${b._id}`)
+}
+function closeDetail(pop){
+  openBook=null;
+  scrim.classList.remove("open");detail.classList.remove("open");
+  document.body.style.overflow="";
+  setTimeout(()=>{if(!openBook)detail.hidden=true},320);
+  if(!pop&&location.hash.startsWith("#/book/"))history.back()
+}
+grid.addEventListener("click",e=>{
+  const card=e.target.closest(".book");if(!card)return;
+  const b=BOOKS[+card.dataset.id];if(b)openDetail(b,true)
+});
+if(scrim)scrim.onclick=()=>closeDetail();
+const backbtn=document.getElementById("backbtn");if(backbtn)backbtn.onclick=()=>closeDetail();
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&openBook)closeDetail()});
+window.addEventListener("popstate",()=>{
+  const m=location.hash.match(/^#\/book\/(\d+)$/);
+  if(m&&BOOKS[+m[1]])openDetail(BOOKS[+m[1]],false);
+  else if(openBook)closeDetail(true)
+});
+
 if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js").catch(()=>{})}
 renderFilters();render();
+(function(){const m=location.hash.match(/^#\/book\/(\d+)$/);if(m&&BOOKS[+m[1]])openDetail(BOOKS[+m[1]],false)})();
 
 </script></body></html>
