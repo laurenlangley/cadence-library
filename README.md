@@ -1,65 +1,66 @@
 # Cadence Library
 
-A static PWA over a reading history of 490 books. No build tooling at runtime, no
-dependencies. Covers come from Open Library and are cached per device.
+A local-first PWA over a reading history of 490 books. No dependencies, no build
+step. Covers come from Open Library and are cached per device.
 
 ## Run it locally
 
     python3 -m http.server 8000
 
-Then open <http://localhost:8000>. The service worker needs `localhost` or HTTPS.
-Opening `index.html` off the file system renders the grid but skips offline caching.
+Open <http://localhost:8000>. A server is required: the app fetches
+`data/cadence-index.csv` at runtime, and browsers block that from `file://`.
 
-## Update the data
+## How editing works
 
-`data/cadence-index.csv` is the database. `index.html` is generated from it.
+1. Tap a book, or use **Triage unknown**, and set its reading state.
+2. The change saves to IndexedDB on that device immediately. It works offline.
+3. The header shows how many changes are unsynced.
+4. **Sync** writes them all to `data/cadence-index.csv` as a single commit.
 
-1. Edit the CSV.
-2. `python3 build.py`
-3. Commit both files together.
+Batching is deliberate. Committing on every tap would mean hundreds of commits
+at a few seconds each; batched, a triage session is one readable diff.
 
-`build.py` prints the row count and the read/reading/want split, so a bad edit is
-visible immediately.
+## One-time setup for syncing
 
-## Push to the existing GitHub repo
+1. GitHub > Settings > Developer settings > Personal access tokens >
+   **Fine-grained tokens** > Generate new token.
+2. Repository access: **Only select repositories**, pick `cadence-library`.
+3. Permissions > Repository permissions > **Contents: Read and write**.
+4. Copy the token, open **Settings** in the app, paste it, Save.
 
-From the folder, with the remote already created:
+The token is stored in IndexedDB on that device only. It is never committed.
+Clearing site data removes it. Revoke it on GitHub at any time.
 
-    git init
-    git add .
-    git commit -m "Cadence Library: CSV-backed build"
-    git branch -M main
-    git remote add origin git@github.com:<user>/cadence-library.git
-    git push -u origin main
+## Adding books
 
-If the repo already has commits, `git pull --rebase origin main` before pushing.
+**+ Add book** takes a title and author. On iOS, tap the mic key on the keyboard
+and dictate; any dictation tool that types into a text field works. The book
+appears immediately, flagged `new`, and goes up with the next sync.
+
+## Editing the CSV by hand
+
+Still fine. Edit `data/cadence-index.csv`, commit, done. No build to run.
+
+Two columns carry state, and they are different axes:
+
+- `status` is how you got it: `owned`, `borrowed`, `wishlist`, `uncertain`.
+- `read` is whether you read it: `yes`, `no`, a date, or blank for unknown.
+
+To fix a book showing as Want to read that you have actually read, set `read`
+to `yes`. Leave `status` alone.
 
 ## Publish
 
-Settings > Pages > Source: *Deploy from a branch*, branch `main`, folder `/ (root)`.
-Wait for the green check, then open `https://<user>.github.io/cadence-library/`.
+Settings > Pages > Source: *Deploy from a branch*, branch `main`, folder
+`/ (root)`. Then open `https://<user>.github.io/cadence-library/`.
 
-On iPhone: open that URL in Safari, then Share > Add to Home Screen. The manifest
-gives it a standalone window and the warm paper background.
+On iPhone: open that URL in Safari, then Share > Add to Home Screen.
 
 ## How covers work
 
-The data has no cover URLs. Each book is looked up on the Open Library search API
-by cleaned title and first author, then the cover is pulled from
-`covers.openlibrary.org` at medium size. Results, including misses, are cached in
-IndexedDB per device, so the second visit is instant.
+The data has no cover URLs. Each book is looked up on the Open Library search
+API by cleaned title and first author, then pulled from `covers.openlibrary.org`.
+Results, including misses, are cached in IndexedDB per device.
 
 Lookups fire only for cards scrolling into view, six at a time, one attempt per
-book per session. "Refresh covers" clears the cache and retries.
-
-## Files
-
-| Path | Role |
-| --- | --- |
-| `data/cadence-index.csv` | The database |
-| `build.py` | CSV to `index.html` |
-| `template.html` | The app source. Edit this, not `index.html` |
-| `index.html` | Generated, committed for Pages |
-| `sw.js` | Service worker |
-| `manifest.webmanifest`, `icon-192.png`, `icon-512.png` | Install metadata |
-| `CLAUDE.md` | Project rules and known problems |
+book per session. **Refresh covers** clears the cache and retries.
