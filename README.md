@@ -41,13 +41,27 @@ appears immediately, flagged `new`, and goes up with the next sync.
 
 Still fine. Edit `data/cadence-index.csv`, commit, done. No build to run.
 
-Two columns carry state, and they are different axes:
+Three columns carry state, and they are different axes:
 
 - `status` is how you got it: `owned`, `borrowed`, `wishlist`, `uncertain`.
 - `read` is whether you read it: `yes`, `no`, a date, or blank for unknown.
+- `deleted` is a date if you removed the book on purpose, blank otherwise.
 
 To fix a book showing as Want to read that you have actually read, set `read`
 to `yes`. Leave `status` alone.
+
+## Deleting a book
+
+Open the book, scroll to the bottom, Remove, then confirm. It disappears from
+every view immediately and commits on the next sync.
+
+Deletion leaves a tombstone: the row stays in the CSV with just the id, title
+and author, everything else blanked, and a date in `deleted`. That is what stops
+a future re-import from Amazon or Audible quietly putting the book back. The
+note file, if there is one, is deleted outright.
+
+Adding a book you previously deleted revives the same row rather than creating
+a duplicate.
 
 ## Publish
 

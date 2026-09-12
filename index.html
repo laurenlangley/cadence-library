@@ -96,6 +96,14 @@ h1{font-family:Georgia,serif;font-size:30px;letter-spacing:-.03em;margin:0;font-
 .note-status{font-size:12px;margin-top:12px;min-height:17px}
 .note-status.err{color:#8A3B3B}
 .note-status.ok{color:var(--read)}
+.danger{margin-top:34px;padding-top:20px;border-top:1px solid var(--line)}
+.danger h3{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;opacity:.55;margin:0 0 9px;font-weight:400}
+.del-btn{appearance:none;width:100%;border:1px solid rgba(138,59,59,.45);background:transparent;color:#8A3B3B;border-radius:13px;padding:12px;font:inherit;font-size:13.5px;cursor:pointer}
+.del-btn:active{background:rgba(138,59,59,.07)}
+.del-confirm{display:grid;gap:8px}
+.del-confirm p{margin:0 0 4px;font-size:13px;line-height:1.5}
+.del-confirm .row2{gap:8px}
+.del-yes{appearance:none;border:1px solid #8A3B3B;background:#8A3B3B;color:#fff;border-radius:13px;padding:12px;font:inherit;font-size:13.5px;cursor:pointer}
 .pill{display:inline-flex;align-items:center;gap:7px;font-size:11px;text-transform:uppercase;letter-spacing:.09em;border:1px solid var(--line);border-radius:999px;padding:5px 11px}
 .pill i{width:8px;height:8px;border-radius:50%}
 .changelist{margin:14px 0 0;font-size:13px;border-top:1px solid var(--line)}
@@ -203,6 +211,9 @@ const dbGet=k=>idbGet("covers",k), dbSet=(k,v)=>idbSet("covers",k,v), dbClear=()
 function decorate(b){
   const o = OVERLAY[b.id];
   if(o && o.fields) Object.assign(b, o.fields);
+  const col = String(b.deleted || "").trim().toLowerCase();
+  const tombstoned = col !== "" && !["no","n","false","0"].includes(col);
+  b._deleted = tombstoned || !!(o && o.deleted);
   b._title=(b.title||"").trim()||"Untitled";
   b._author=(b.author||"").trim()||"";
   b._status=(b.status||"").trim().toLowerCase();
@@ -214,6 +225,25 @@ function decorate(b){
 }
 function rebuild(){ BOOKS.forEach(decorate) }
 function pendingCount(){ return Object.keys(OVERLAY).length }
+
+async function markDeleted(id){
+  const b = BOOKS.find(x=>x.id===id);
+  const prev = OVERLAY[id] || {};
+  if(prev.isNew){
+    // Never synced, so there is nothing on GitHub to remove. Just drop it.
+    delete OVERLAY[id];
+    try{ await idbDel("overlay", id) }catch(e){}
+    const i = BOOKS.findIndex(x=>x.id===id);
+    if(i>-1) BOOKS.splice(i,1);
+  } else {
+    OVERLAY[id] = { fields: Object.assign({}, prev.fields, {deleted:"yes"}), deleted: true,
+                    title: b ? b._title : id,
+                    note_file: b ? (b.note_file||"").trim() : "", at: Date.now() };
+    try{ await idbSet("overlay", id, OVERLAY[id]) }catch(e){}
+    if(b) decorate(b);
+  }
+  updateSyncBar();
+}
 
 async function setEdit(id, fields, isNew){
   const prev = OVERLAY[id] || {};
@@ -309,7 +339,7 @@ function renderFilters(){
     filters.querySelectorAll(".chip").forEach(x=>x.classList.remove("active"));
     btn.classList.add("active");render()})
 }
-function isUnknown(b){ return String(b.read||"").trim()==="" && b._semantic==="want" }
+function isUnknown(b){ return !b._deleted && String(b.read||"").trim()==="" && b._semantic==="want" }
 function cmp(a,b){
   let av,bv;
   if(state.sort==="semantic"){const o=["read","reading","want"];av=o.indexOf(a._semantic);bv=o.indexOf(b._semantic)}
@@ -323,6 +353,7 @@ function cmp(a,b){
 function visible(){
   const q=state.query.toLowerCase();
   return BOOKS.filter(b=>{
+    if(b._deleted) return false;
     let ok;
     if(state.filter==="all")ok=true;
     else if(state.filter==="unknown")ok=isUnknown(b);
@@ -341,7 +372,7 @@ function card(b,i){
 }
 function render(){
   const books=visible();
-  count.textContent=`${books.length} of ${BOOKS.length}`;
+  count.textContent=`${books.length} of ${BOOKS.filter(b=>!b._deleted).length}`;
   grid.innerHTML=books.map(card).join("");
   empty.style.display=books.length?"none":"block";
   grid.querySelectorAll("img.cover").forEach(img=>{img.onerror=()=>img.remove()});
@@ -382,8 +413,10 @@ function splitFrontmatter(text){
 
 /* --- sheet plumbing --- */
 let sheetOpen=null;
+let hideTimer=null;
 function openSheet(label){
   sheetLabel.textContent=label||"";
+  if(hideTimer){clearTimeout(hideTimer);hideTimer=null}
   sheet.hidden=false;
   requestAnimationFrame(()=>{scrim.classList.add("open");sheet.classList.add("open")});
   sheetBody.scrollTop=0;document.body.style.overflow="hidden"
@@ -391,7 +424,8 @@ function openSheet(label){
 function closeSheet(){
   sheetOpen=null;scrim.classList.remove("open");sheet.classList.remove("open");
   document.body.style.overflow="";
-  setTimeout(()=>{if(!sheetOpen)sheet.hidden=true},320);
+  if(hideTimer)clearTimeout(hideTimer);
+  hideTimer=setTimeout(()=>{hideTimer=null;if(!sheetOpen)sheet.hidden=true},340);
   if(location.hash)history.replaceState(null,"",location.pathname+location.search)
 }
 if(scrim)scrim.onclick=()=>closeSheet();
@@ -430,6 +464,30 @@ async function loadNote(rel){
   return noteCache[rel];
 }
 
+function drawDelete(b){
+  const host=document.getElementById("delHost");
+  if(!host)return;
+  const note=(b.note_file||"").trim();
+  const unsynced=!!(OVERLAY[b.id]&&OVERLAY[b.id].isNew);
+  host.innerHTML=`<button class="del-btn" id="delStart">Remove this book from the library</button>`;
+  document.getElementById("delStart").onclick=()=>{
+    host.innerHTML=`<div class="del-confirm">
+      <p>Delete <strong>${esc(b._title)}</strong> and its history?</p>
+      <p class="hint" style="margin:0">${unsynced
+        ? "This book has never been synced, so it disappears immediately and nothing is committed."
+        : `The row is removed from <code>data/cadence-index.csv</code> on the next sync.${note?` Its note file <code>${esc(note)}</code> is deleted too.`:""} Git keeps the history, so it can be recovered from an earlier commit.`}</p>
+      <div class="row2">
+        <button class="btn" id="delNo">Cancel</button>
+        <button class="del-yes" id="delYes">Yes, delete</button>
+      </div></div>`;
+    document.getElementById("delNo").onclick=()=>drawDelete(b);
+    document.getElementById("delYes").onclick=async()=>{
+      await markDeleted(b.id);
+      render();closeSheet()
+    }
+  }
+}
+
 async function openDetail(b,push){
   sheetOpen="detail";
   const c=semanticColors[b._semantic]||"#888";
@@ -437,10 +495,12 @@ async function openDetail(b,push){
   sheetBody.innerHTML=`<div class="d-head"><div class="d-cover">${cover}</div><div><h2 class="d-title">${esc(b._title)}</h2><p class="d-author">${esc(b._author)||"Author unknown"}</p><span class="pill"><i style="background:${c}"></i>${semanticLabels[b._semantic]}</span></div></div>
     ${stateButtons(b)}
     <dl class="facts" id="factList"></dl>
-    <div class="notes"><h2>Notes</h2><div class="rule"></div><div id="noteHost"><p class="nonote">Loading…</p></div></div>`;
+    <div class="notes"><h2>Notes</h2><div class="rule"></div><div id="noteHost"><p class="nonote">Loading…</p></div></div>
+    <div class="danger"><h3>Remove</h3><div id="delHost"></div></div>`;
   openSheet("");
   if(push)history.replaceState(null,"","#/book/"+encodeURIComponent(b.id));
   bindStateButtons(sheetBody,()=>{ if(sheetOpen==="detail") openDetail(BOOKS.find(x=>x.id===b.id), false) });
+  drawDelete(b);
 
   const raw=await loadNote((b.note_file||"").trim());
   const [meta, body] = raw ? splitFrontmatter(raw) : [{},""];
@@ -497,6 +557,10 @@ function drawTriage(){
 /* --- add a book (voice friendly: plain text inputs get the iOS mic key) --- */
 function slugId(t,a){
   const base=`${t} ${a}`.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,56).replace(/-$/,"")||"untitled";
+  // A tombstone with this slug means the book was deleted before. Reuse the id
+  // so adding it back revives that row instead of stacking "-2" beside it.
+  const tomb=BOOKS.find(b=>b.id===base&&b._deleted);
+  if(tomb)return base;
   let id=base,n=1;
   while(BOOKS.some(b=>b.id===id)){n++;id=`${base}-${n}`}
   return id
@@ -528,8 +592,17 @@ function openAdd(){
     row.status=st==="reading"?"reading":document.getElementById("aStatus").value;
     row.read=st==="read"?"yes":"";
     row.first_seen=today;row.events="1";row.sources="app";
-    BOOKS.unshift(decorate(row));
-    await setEdit(row.id,row,true);
+    row.deleted="";
+    const existing=BOOKS.findIndex(b=>b.id===row.id);
+    const reviving=existing>-1;
+    if(reviving)BOOKS[existing]=decorate(row); else BOOKS.unshift(decorate(row));
+    if(reviving){
+      delete OVERLAY[row.id];
+      try{await idbDel("overlay",row.id)}catch(e){}
+      await setEdit(row.id,row,false);
+    } else {
+      await setEdit(row.id,row,true);
+    }
     render();
     msg.className="note-status ok";msg.textContent=`Added "${t}". Press Sync to commit it.`;
     document.getElementById("aTitle").value="";document.getElementById("aAuthor").value="";
@@ -573,7 +646,8 @@ function b64(str){
 function changeSummary(){
   return Object.entries(OVERLAY).map(([id,o])=>{
     const b=BOOKS.find(x=>x.id===id);
-    return {title:b?b._title:id, what:o.isNew?"added":(b?semanticLabels[b._semantic]:"edited")}
+    const what=o.deleted?"removed":o.isNew?"added":(b?semanticLabels[b._semantic]:"edited");
+    return {title:(b?b._title:o.title||id), what}
   })
 }
 async function ghReason(r){
@@ -610,17 +684,32 @@ async function doSync(){
     const j=await r.json();sha=j.sha;
     const text=new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g,"")),c=>c.charCodeAt(0)));
     const p=parseCSV(text);remoteCols=p.columns;remoteRows=p.rows;
+    if(!remoteCols.includes("deleted")){remoteCols.push("deleted");remoteRows.forEach(r=>r.deleted=r.deleted||"")}
   }catch(e){return fail("Network error reading the file: "+e.message)}
 
   // Merge onto the remote copy, not the local one, so another device's edits survive.
   const byId={};remoteRows.forEach(r=>byId[r.id]=r);
-  let added=0,updated=0;
+  let added=0,updated=0,removed=0;
+  const orphanNotes=[];
   for(const [id,o] of Object.entries(OVERLAY)){
+    if(o.deleted){
+      // Tombstone, not erasure. A bare row survives a future re-import and stops
+      // the book coming back; everything about its history is cleared.
+      const row=byId[id];
+      if(row){
+        remoteCols.forEach(c=>{ if(!["id","title","author"].includes(c)) row[c]="" });
+        row.deleted=new Date().toISOString().slice(0,10);
+        removed++
+      }
+      if(o.note_file)orphanNotes.push(o.note_file);
+      continue
+    }
     if(byId[id]){Object.assign(byId[id],o.fields);updated++}
     else{const row={};remoteCols.forEach(c=>row[c]="");Object.assign(row,o.fields);row.id=id;remoteRows.unshift(row);byId[id]=row;added++}
   }
   msg.textContent="Committing…";
-  const body={message:`Cadence: ${updated} updated, ${added} added`,content:b64(toCSV(remoteCols,remoteRows)),branch:REPO.branch,sha};
+  const parts=[updated?`${updated} updated`:"",added?`${added} added`:"",removed?`${removed} removed`:""].filter(Boolean);
+  const body={message:`Cadence: ${parts.join(", ")||"no-op"}`,content:b64(toCSV(remoteCols,remoteRows)),branch:REPO.branch,sha};
   try{
     const r=await fetch(api,{method:"PUT",headers:Object.assign({"Content-Type":"application/json"},H),body:JSON.stringify(body)});
     if(r.status===409)return fail("The file changed on GitHub while you were editing. Reload and try again.");
@@ -631,10 +720,35 @@ async function doSync(){
     if(r.status===422)return fail(`GitHub rejected the content (HTTP 422). ${await ghReason(r)} Often a protected branch on ${REPO.branch}.`);
     if(!r.ok)return fail(`Commit rejected (HTTP ${r.status}). ${await ghReason(r)}`);
   }catch(e){return fail("Network error committing: "+e.message)}
+  // Note files are separate objects in git, so each needs its own delete call.
+  let notesGone=0,notesFailed=0;
+  for(const rel of orphanNotes){
+    msg.textContent=`Deleting ${rel}…`;
+    try{
+      const nApi=`https://api.github.com/repos/${REPO.owner}/${REPO.repo}/contents/${rel}`;
+      const g=await fetch(`${nApi}?ref=${REPO.branch}`,{headers:H});
+      if(g.status===404){notesGone++;continue}
+      if(!g.ok){notesFailed++;continue}
+      const gj=await g.json();
+      const d=await fetch(nApi,{method:"DELETE",headers:Object.assign({"Content-Type":"application/json"},H),
+        body:JSON.stringify({message:`Cadence: remove ${rel}`,sha:gj.sha,branch:REPO.branch})});
+      d.ok?notesGone++:notesFailed++;
+    }catch(e){notesFailed++}
+  }
+  for(const id of Object.keys(OVERLAY)){
+    if(!OVERLAY[id].deleted)continue;
+    const b=BOOKS.find(x=>x.id===id);
+    if(!b)continue;
+    COLUMNS.forEach(c=>{ if(!["id","title","author"].includes(c)) b[c]="" });
+    b.deleted=new Date().toISOString().slice(0,10);
+  }
   OVERLAY={};try{await idbClear("overlay")}catch(e){}
   rebuild();render();updateSyncBar();
   msg.className="note-status ok";
-  msg.textContent=`Committed. ${updated} updated, ${added} added. GitHub Pages takes about a minute to redeploy.`;
+  msg.textContent=`Committed: ${parts.join(", ")||"nothing"}.`
+    + (notesGone?` ${notesGone} note file${notesGone===1?"":"s"} deleted.`:"")
+    + (notesFailed?` ${notesFailed} note file${notesFailed===1?"":"s"} could not be deleted; remove by hand.`:"")
+    + ` GitHub Pages takes about a minute to redeploy.`;
   if(go)go.disabled=false
 }
 

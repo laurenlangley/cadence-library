@@ -31,7 +31,7 @@ The app needs a server. Relative `fetch` is blocked from `file://`, so opening
 
 ## CSV schema
 
-`id, title, author, format, status, read, pct_complete, first_seen, last_seen, events, sources, note_file`
+`id, title, author, format, status, read, pct_complete, first_seen, last_seen, events, sources, note_file, deleted`
 
 - `id` is a stable slug of title plus author, deduplicated with a numeric suffix.
   **Never renumber or regenerate ids.** The app's edit overlay is keyed on them,
@@ -42,6 +42,17 @@ The app needs a server. Relative `fetch` is blocked from `file://`, so opening
   or a date means read; `no` means explicitly not read; blank falls through to
   `status`. A book can be `owned` and `read: yes` at once. Never edit `status`
   to fix a reading-state display.
+- `deleted` is a **tombstone**, not a flag to hide things temporarily. A date
+  there means Lauren deliberately removed the book. The row stays in the CSV
+  with only `id`, `title` and `author` intact and every other column cleared,
+  so a future re-import from Amazon, Audible, Libby or Kindle cannot resurrect
+  it. Any non-empty value except `no`/`false`/`0` counts as deleted.
+  **Never bulk-clear this column, and never drop tombstone rows to tidy the
+  file.** Doing either brings back books that were removed on purpose, and there
+  is no record anywhere else of which ones they were.
+  An importer must slug ids the same way the app does (lowercase, non-alphanumeric
+  to hyphens, title plus author, truncated to 56 chars) or tombstones will not
+  match and the books return under a new id.
 - Extra columns pass through untouched, including through sync.
 
 `semantic()` in `index.html` is the single place the read/reading/want rule lives.
@@ -69,7 +80,10 @@ it; the fix is reload and retry, never force.
 3. **Non-books in the data**: "MAGCREDIBLE Magnets", "Mighty Bright-Blu-Xflex
    2-Lght", and one row titled "Not Available" with 14 events. Expect more, since
    the Amazon order export cannot tell a book from a book light. Needs an audit.
-4. **Notes exist for 6 books.** There is no way to write one from the app yet;
+4. **Tombstones accumulate.** Deleted books stay as bare rows forever. At 489
+   books this costs nothing; if it ever becomes noise, the fix is a purge
+   command, not hand-editing the column.
+5. **Notes exist for 6 books.** There is no way to write one from the app yet;
    they are hand-authored markdown in `notes/`.
 
 ## Drive is no longer the inbox
